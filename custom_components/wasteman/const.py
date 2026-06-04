@@ -14,10 +14,10 @@ CONF_UPRN = "uprn"
 CONF_POSTCODE = "postcode"
 
 # Options keys
-CONF_DISPLAY_FORMAT = "display_format"
-CONF_EXCLUDED_TYPES = "excluded_types"
+CONF_NEXT_BINS_TYPES = "next_bins_types"   # whitelist for Next Bins sensor + per-type sensors
 CONF_TYPE_ALIASES = "type_aliases"
 CONF_SENSOR_PER_TYPE = "sensor_per_type"
+CONF_DISPLAY_FORMAT = "display_format"
 CONF_LOOKAHEAD_DAYS = "lookahead_days"
 CONF_SEPARATOR = "separator"
 
@@ -30,6 +30,7 @@ DEFAULT_LOOKAHEAD_DAYS = 30
 DEFAULT_SENSOR_PER_TYPE = True
 DEFAULT_SEPARATOR = ", "
 
-# Excluded from all sensors and calendar by default.
-# Bulky Waste variants require booking and are not regular kerbside collections.
-DEFAULT_EXCLUDED_TYPES = ["Bulky Waste", "Bulky Waste (Non-Electrical)"]
+# Standard kerbside bin types shown by default.
+# These are the four types most residents care about.
+# Bulky Waste is excluded because it requires separate booking.
+DEFAULT_NEXT_BINS_TYPES = ["Food Waste", "Garden Waste", "Recycling", "Refuse"]

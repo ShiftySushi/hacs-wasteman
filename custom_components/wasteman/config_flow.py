@@ -3,21 +3,26 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_DISPLAY_FORMAT,
-    CONF_EXCLUDED_TYPES,
     CONF_LOOKAHEAD_DAYS,
+    CONF_NEXT_BINS_TYPES,
     CONF_POSTCODE,
     CONF_SENSOR_PER_TYPE,
     CONF_SEPARATOR,
     CONF_TYPE_ALIASES,
     CONF_UPRN,
     DEFAULT_DISPLAY_FORMAT,
-    DEFAULT_EXCLUDED_TYPES,
     DEFAULT_LOOKAHEAD_DAYS,
+    DEFAULT_NEXT_BINS_TYPES,
     DEFAULT_SENSOR_PER_TYPE,
     DEFAULT_SEPARATOR,
     DISPLAY_FORMAT_COMBINED,
@@ -76,7 +81,6 @@ class WastemanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         address_map = {a["uprn"]: a["address"] for a in self._addresses}
 
-        # If there's only one address skip selection entirely
         if len(address_map) == 1:
             [(uprn, label)] = address_map.items()
             return self.async_create_entry(
@@ -99,7 +103,7 @@ class WastemanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class WastemanOptionsFlow(config_entries.OptionsFlow):
-    """Customisation: display format, aliases, exclusions."""
+    """Customisation options."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
@@ -115,36 +119,47 @@ class WastemanOptionsFlow(config_entries.OptionsFlow):
                     original, _, alias = line.partition("=")
                     aliases[original.strip()] = alias.strip()
             user_input[CONF_TYPE_ALIASES] = aliases
-
-            raw_excluded = user_input.pop("excluded_types_raw", "")
-            user_input[CONF_EXCLUDED_TYPES] = [e.strip() for e in raw_excluded.split(",") if e.strip()]
-
             return self.async_create_entry(title="", data=user_input)
 
+        # Build list of available types: API data + defaults, so the selector is
+        # always populated even if the coordinator hasn't fetched yet.
+        coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id]
+        api_types: list[str] = sorted({
+            c.waste_type for c in (coordinator.data or [])
+        })
+        all_type_options = sorted(set(api_types) | set(DEFAULT_NEXT_BINS_TYPES))
+
+        current_selection: list[str] = opts.get(CONF_NEXT_BINS_TYPES, DEFAULT_NEXT_BINS_TYPES)
         current_aliases: dict[str, str] = opts.get(CONF_TYPE_ALIASES, {})
         aliases_str = "\n".join(f"{k} = {v}" for k, v in current_aliases.items())
-        excluded_str = ", ".join(opts.get(CONF_EXCLUDED_TYPES, DEFAULT_EXCLUDED_TYPES))
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 vol.Optional(
+                    CONF_NEXT_BINS_TYPES,
+                    default=current_selection,
+                ): SelectSelector(SelectSelectorConfig(
+                    options=all_type_options,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )),
+                vol.Optional(
                     CONF_SEPARATOR,
                     default=opts.get(CONF_SEPARATOR, DEFAULT_SEPARATOR),
                 ): str,
-                vol.Optional(
-                    CONF_DISPLAY_FORMAT,
-                    default=opts.get(CONF_DISPLAY_FORMAT, DEFAULT_DISPLAY_FORMAT),
-                ): vol.In(_DISPLAY_FORMAT_OPTIONS),
                 vol.Optional(
                     CONF_SENSOR_PER_TYPE,
                     default=opts.get(CONF_SENSOR_PER_TYPE, DEFAULT_SENSOR_PER_TYPE),
                 ): bool,
                 vol.Optional(
+                    CONF_DISPLAY_FORMAT,
+                    default=opts.get(CONF_DISPLAY_FORMAT, DEFAULT_DISPLAY_FORMAT),
+                ): vol.In(_DISPLAY_FORMAT_OPTIONS),
+                vol.Optional(
                     CONF_LOOKAHEAD_DAYS,
                     default=opts.get(CONF_LOOKAHEAD_DAYS, DEFAULT_LOOKAHEAD_DAYS),
                 ): vol.All(int, vol.Range(min=1, max=365)),
-                vol.Optional("excluded_types_raw", default=excluded_str): str,
                 vol.Optional("type_aliases_raw", default=aliases_str): str,
             }),
         )

@@ -11,16 +11,16 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_DISPLAY_FORMAT,
-    CONF_EXCLUDED_TYPES,
     CONF_LOOKAHEAD_DAYS,
+    CONF_NEXT_BINS_TYPES,
     CONF_SENSOR_PER_TYPE,
     CONF_SEPARATOR,
     CONF_TYPE_ALIASES,
     DEFAULT_DISPLAY_FORMAT,
-    DEFAULT_EXCLUDED_TYPES,
     DEFAULT_LOOKAHEAD_DAYS,
-    DEFAULT_SEPARATOR,
+    DEFAULT_NEXT_BINS_TYPES,
     DEFAULT_SENSOR_PER_TYPE,
+    DEFAULT_SEPARATOR,
     DISPLAY_FORMAT_COMBINED,
     DISPLAY_FORMAT_DATE,
     DISPLAY_FORMAT_DAYS,
@@ -40,7 +40,6 @@ def _format_date(d: date) -> str:
 
 
 def _format_days(days: int) -> str:
-    """'in 3 days' style — used by per-type sensors."""
     if days == 0:
         return "today"
     if days == 1:
@@ -49,7 +48,6 @@ def _format_days(days: int) -> str:
 
 
 def _format_days_short(days: int) -> str:
-    """'3 days' style — used by the combined sensor label."""
     if days == 0:
         return "today"
     if days == 1:
@@ -67,7 +65,6 @@ def _state_string(collection: Collection, fmt: str) -> str:
 
 
 def _group_by_date(collections: list[Collection]) -> dict[date, list[Collection]]:
-    """Group a sorted collection list by date, preserving intra-day order."""
     groups: dict[date, list[Collection]] = {}
     for c in collections:
         groups.setdefault(c.date, []).append(c)
@@ -83,28 +80,26 @@ async def async_setup_entry(
 ) -> None:
     coordinator: WastemanCoordinator = hass.data[DOMAIN][entry.entry_id]
     opts = entry.options
-    excluded: set[str] = set(opts.get(CONF_EXCLUDED_TYPES, DEFAULT_EXCLUDED_TYPES))
+    whitelist: list[str] = opts.get(CONF_NEXT_BINS_TYPES, DEFAULT_NEXT_BINS_TYPES)
+    whitelist_set = set(whitelist)
     aliases: dict[str, str] = opts.get(CONF_TYPE_ALIASES, {})
     display_fmt: str = opts.get(CONF_DISPLAY_FORMAT, DEFAULT_DISPLAY_FORMAT)
     sensor_per_type: bool = opts.get(CONF_SENSOR_PER_TYPE, DEFAULT_SENSOR_PER_TYPE)
     lookahead: int = opts.get(CONF_LOOKAHEAD_DAYS, DEFAULT_LOOKAHEAD_DAYS)
     separator: str = opts.get(CONF_SEPARATOR, DEFAULT_SEPARATOR)
 
-    # The combined "Next Bins" sensor is always created.
+    # Combined sensor is always created.
     entities: list[SensorEntity] = [
-        NextBinsSensor(coordinator, entry, aliases, excluded, lookahead, separator)
+        NextBinsSensor(coordinator, entry, aliases, whitelist_set, lookahead, separator)
     ]
 
-    # Per-type sensors are optional (enabled by default) for detailed tracking.
+    # Per-type sensors: created for every whitelisted type.
+    # Using the whitelist (not coordinator.data) guarantees sensors exist even if
+    # the API only returned one collection cycle at setup time.
     if sensor_per_type:
-        known_types = {
-            c.waste_type
-            for c in (coordinator.data or [])
-            if c.waste_type not in excluded
-        }
         entities.extend(
-            WasteTypeSensor(coordinator, entry, wtype, aliases, display_fmt, excluded, lookahead)
-            for wtype in sorted(known_types)
+            WasteTypeSensor(coordinator, entry, wtype, aliases, display_fmt, lookahead)
+            for wtype in sorted(whitelist_set)
         )
 
     async_add_entities(entities, update_before_add=True)
@@ -120,35 +115,34 @@ class _WastemanSensorBase(CoordinatorEntity[WastemanCoordinator], SensorEntity):
         coordinator: WastemanCoordinator,
         entry: ConfigEntry,
         aliases: dict[str, str],
-        excluded: set[str],
         lookahead: int,
     ) -> None:
         super().__init__(coordinator)
         self._entry = entry
         self._aliases = aliases
-        self._excluded = excluded
         self._lookahead = lookahead
-
-    def _visible_collections(self) -> list[Collection]:
-        today = date.today()
-        return [
-            c for c in (self.coordinator.data or [])
-            if c.waste_type not in self._excluded
-            and c.date >= today
-            and c.days_until <= self._lookahead
-        ]
 
     def _label(self, waste_type: str) -> str:
         return self._aliases.get(waste_type, waste_type)
+
+    def _collections_for(self, *types: str) -> list[Collection]:
+        """Upcoming collections for the given waste types within the lookahead window."""
+        type_set = set(types)
+        today = date.today()
+        return [
+            c for c in (self.coordinator.data or [])
+            if c.waste_type in type_set
+            and c.date >= today
+            and c.days_until <= self._lookahead
+        ]
 
 
 # --- Combined sensor ---
 
 class NextBinsSensor(_WastemanSensorBase):
-    """Shows all waste types due on the next collection date.
+    """Shows all whitelisted waste types due on the next collection date.
 
-    State: "Recycling, Food waste - 3 days"
-    Attributes: upcoming grouped by date with types list.
+    State: "Recycling, Garden Waste, Food Waste - 3 days"
     """
 
     def __init__(
@@ -156,18 +150,28 @@ class NextBinsSensor(_WastemanSensorBase):
         coordinator: WastemanCoordinator,
         entry: ConfigEntry,
         aliases: dict[str, str],
-        excluded: set[str],
+        whitelist: set[str],
         lookahead: int,
         separator: str,
     ) -> None:
-        super().__init__(coordinator, entry, aliases, excluded, lookahead)
+        super().__init__(coordinator, entry, aliases, lookahead)
+        self._whitelist = whitelist
         self._separator = separator
         self._attr_unique_id = f"{entry.entry_id}_next_bins"
         self._attr_name = "Next Bins"
 
+    def _visible(self) -> list[Collection]:
+        today = date.today()
+        return [
+            c for c in (self.coordinator.data or [])
+            if c.waste_type in self._whitelist
+            and c.date >= today
+            and c.days_until <= self._lookahead
+        ]
+
     @property
     def native_value(self) -> str | None:
-        visible = self._visible_collections()
+        visible = self._visible()
         if not visible:
             return None
         groups = _group_by_date(visible)
@@ -178,27 +182,26 @@ class NextBinsSensor(_WastemanSensorBase):
 
     @property
     def icon(self) -> str:
-        visible = self._visible_collections()
+        visible = self._visible()
         if not visible:
             return "mdi:trash-can-outline"
-        groups = _group_by_date(visible)
-        first = groups[min(groups)][0]
+        first = _group_by_date(visible)[min(_group_by_date(visible))][0]
         return first.icon or "mdi:trash-can-outline"
 
     @property
     def extra_state_attributes(self) -> dict:
-        visible = self._visible_collections()
-        groups = _group_by_date(visible)
-        upcoming = []
-        for d in sorted(groups):
-            items = groups[d]
-            upcoming.append({
-                "date": d.isoformat(),
-                "days_until": items[0].days_until,
-                "waste_types": [self._label(c.waste_type) for c in items],
-                "date_changed": any(c.date_changed for c in items),
-            })
-        return {"upcoming": upcoming}
+        groups = _group_by_date(self._visible())
+        return {
+            "upcoming": [
+                {
+                    "date": d.isoformat(),
+                    "days_until": items[0].days_until,
+                    "waste_types": [self._label(c.waste_type) for c in items],
+                    "date_changed": any(c.date_changed for c in items),
+                }
+                for d, items in sorted(groups.items())
+            ]
+        }
 
 
 # --- Per-type sensor ---
@@ -213,10 +216,9 @@ class WasteTypeSensor(_WastemanSensorBase):
         waste_type: str,
         aliases: dict[str, str],
         display_fmt: str,
-        excluded: set[str],
         lookahead: int,
     ) -> None:
-        super().__init__(coordinator, entry, aliases, excluded, lookahead)
+        super().__init__(coordinator, entry, aliases, lookahead)
         self._waste_type = waste_type
         self._display_fmt = display_fmt
         self._attr_unique_id = f"{entry.entry_id}_{waste_type}"
@@ -240,8 +242,7 @@ class WasteTypeSensor(_WastemanSensorBase):
         nxt = self._next()
         upcoming = [
             {"date": c.date.isoformat(), "days_until": c.days_until}
-            for c in self._visible_collections()
-            if c.waste_type == self._waste_type
+            for c in self._collections_for(self._waste_type)
         ]
         attrs: dict = {"upcoming": upcoming}
         if nxt:
