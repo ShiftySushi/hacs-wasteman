@@ -145,12 +145,19 @@ class WasteTypeSensor(_WastemanSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
+        nxt = self._next()
         upcoming = [
             {"date": c.date.isoformat(), "days_until": c.days_until}
             for c in self._visible_collections()
             if c.waste_type == self._waste_type
         ]
-        return {"upcoming": upcoming}
+        attrs: dict = {"upcoming": upcoming}
+        if nxt:
+            attrs["description"] = nxt.description
+            if nxt.date_changed:
+                attrs["date_changed"] = True
+                attrs["change_reason"] = nxt.change_reason
+        return attrs
 
     def _next(self) -> Collection | None:
         today = date.today()

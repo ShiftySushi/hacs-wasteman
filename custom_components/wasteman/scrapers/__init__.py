@@ -11,6 +11,9 @@ class Collection:
     date: date
     waste_type: str
     icon: str | None = field(default=None)
+    description: str = field(default="")
+    date_changed: bool = field(default=False)
+    change_reason: str | None = field(default=None)
 
     @property
     def days_until(self) -> int:

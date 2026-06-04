@@ -2,32 +2,35 @@
   "config": {
     "step": {
       "user": {
-        "title": "Select your council",
+        "title": "Enter your postcode",
+        "description": "Enter your full UK postcode to find your address.",
         "data": {
-          "council": "Council"
+          "postcode": "Postcode"
         }
       },
-      "collection_schedule": {
-        "title": "Your collection schedule",
-        "description": "Select the day your bins are collected and which calendar variant applies to your street. If you're unsure, check the South & Vale website — they list which variant (V1 or V2) applies to each area.",
+      "address": {
+        "title": "Select your address",
+        "description": "Multiple addresses were found for {postcode}. Select yours.",
         "data": {
-          "collection_day": "Collection day",
-          "calendar_variant": "Calendar variant"
+          "uprn": "Address"
         }
       }
+    },
+    "error": {
+      "postcode_not_found": "No addresses found for that postcode. Check the postcode and try again."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Display options",
-        "description": "Customise how waste collection information is displayed in Home Assistant.",
+        "description": "Customise how waste collection information is shown in Home Assistant.",
         "data": {
           "display_format": "State display format",
           "sensor_per_type": "Create one sensor per waste type",
-          "lookahead_days": "Days ahead to show in attributes",
-          "excluded_types_raw": "Excluded waste types (comma-separated)",
-          "type_aliases_raw": "Waste type aliases (one per line: Original = Your label)"
+          "lookahead_days": "Days ahead to include in upcoming attribute",
+          "excluded_types_raw": "Excluded waste types (comma-separated exact names)",
+          "type_aliases_raw": "Waste type aliases — one per line: Original name = Your label"
         }
       }
     }

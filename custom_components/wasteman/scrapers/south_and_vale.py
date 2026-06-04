@@ -1,22 +1,24 @@
 """South Oxfordshire / Vale of White Horse waste collection scraper.
 
-Fetches the iCal feed published by South & Vale councils (same feed for both).
-The feed URL is determined by the user's collection day and calendar variant (V1/V2).
+Uses the BinDays REST API at forms.southandvale.gov.uk — no session or auth required.
 
-Updating when the council changes their calendar:
-  - Edit SOUTH_AND_VALE_ICAL_URLS in const.py with the new Google Calendar IDs.
-  - No other code changes required.
+Two endpoints:
+  POST /api/property/postcode/{POSTCODE}  → list of {uprn, address, council}
+  GET  /api/property/bins/{UPRN}          → upcoming collection weeks with bin types and dates
+
+Updating when the council migrates their system:
+  Edit BINDAYS_BASE / BINDAYS_POSTCODE_URL / BINDAYS_BINS_URL in const.py.
+  The data parsing in this file may also need updating if the JSON structure changes.
 """
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime
 
 import aiohttp
-from icalendar import Calendar  # type: ignore[import-untyped]
 
 from . import BaseScraper, Collection
-from ..const import SOUTH_AND_VALE_ICAL_URLS
+from ..const import BINDAYS_BINS_URL, BINDAYS_POSTCODE_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,66 +26,100 @@ _ICON_KEYWORDS: list[tuple[str, str]] = [
     ("garden",    "mdi:leaf"),
     ("food",      "mdi:food-apple"),
     ("recycl",    "mdi:recycle"),
-    ("rubbish",   "mdi:trash-can"),
     ("refuse",    "mdi:trash-can"),
+    ("rubbish",   "mdi:trash-can"),
     ("glass",     "mdi:bottle-wine"),
     ("textile",   "mdi:tshirt-crew"),
-    ("battery",   "mdi:battery"),
+    ("cloth",     "mdi:tshirt-crew"),
+    ("batter",    "mdi:battery"),
+    ("electric",  "mdi:power-plug"),
+    ("bulky",     "mdi:sofa"),
 ]
 
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Home Assistant Wasteman)"}
 
-def _guess_icon(waste_type: str) -> str:
-    lower = waste_type.lower()
+
+def _guess_icon(bin_type: str) -> str:
+    lower = bin_type.lower()
     for keyword, icon in _ICON_KEYWORDS:
         if keyword in lower:
             return icon
     return "mdi:trash-can-outline"
 
 
+def _parse_date(date_str: str) -> date | None:
+    try:
+        return datetime.strptime(date_str, "%d/%m/%Y").date()
+    except (ValueError, TypeError):
+        return None
+
+
+async def lookup_addresses(postcode: str) -> list[dict]:
+    """Return [{uprn, address, council}, ...] for a postcode.
+
+    Raises ValueError if the postcode returns no results or the API errors.
+    """
+    clean = postcode.replace(" ", "").upper()
+    url = BINDAYS_POSTCODE_URL.format(postcode=clean)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            resp.raise_for_status()
+            data = await resp.json(content_type=None)
+
+    if data.get("setStatus") != "OK":
+        raise ValueError(f"Postcode lookup failed: {data.get('setMessage', 'unknown error')}")
+    addresses = data.get("setData", [])
+    if not addresses:
+        raise ValueError(f"No addresses found for postcode {postcode}")
+    return addresses
+
+
 class SouthAndValeScraper(BaseScraper):
     NAME = "South Oxfordshire / Vale of White Horse"
-    DESCRIPTION = "Google Calendar iCal feed from southandvale.gov.uk"
+    DESCRIPTION = "BinDays REST API — forms.southandvale.gov.uk"
 
-    def __init__(self, collection_day: str, calendar_variant: str) -> None:
-        key = (collection_day.lower(), calendar_variant.lower())
-        if key not in SOUTH_AND_VALE_ICAL_URLS:
-            raise ValueError(
-                f"No iCal URL configured for {collection_day} {calendar_variant}. "
-                "Check SOUTH_AND_VALE_ICAL_URLS in const.py."
-            )
-        self._url = SOUTH_AND_VALE_ICAL_URLS[key]
+    def __init__(self, uprn: str) -> None:
+        self._uprn = uprn
+        self._url = BINDAYS_BINS_URL.format(uprn=uprn)
 
     async def fetch(self) -> list[Collection]:
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 self._url,
+                headers=_HEADERS,
                 timeout=aiohttp.ClientTimeout(total=30),
-                headers={"User-Agent": "Mozilla/5.0 (Home Assistant Wasteman)"},
             ) as resp:
                 resp.raise_for_status()
-                raw = await resp.read()
+                data = await resp.json(content_type=None)
 
-        cal = Calendar.from_ical(raw)
+        if data.get("setStatus") != "OK":
+            raise ValueError(f"BinDays API error: {data.get('setMessage', 'unknown')}")
+
         today = date.today()
         collections: list[Collection] = []
 
-        for component in cal.walk():
-            if component.name != "VEVENT":
-                continue
-            dtstart = component.get("DTSTART")
-            summary = str(component.get("SUMMARY", "Unknown")).strip()
-            if dtstart is None:
-                continue
-            event_date = dtstart.dt
-            if hasattr(event_date, "date"):
-                event_date = event_date.date()
-            if event_date >= today:
-                collections.append(Collection(
-                    date=event_date,
-                    waste_type=summary,
-                    icon=_guess_icon(summary),
-                ))
+        for week in data.get("setData", {}).get("week", []):
+            for day in week.get("day", []):
+                event_date = _parse_date(day.get("collection_date", ""))
+                if event_date is None or event_date < today:
+                    continue
 
-        collections.sort(key=lambda c: c.date)
-        _LOGGER.debug("Fetched %d upcoming collections", len(collections))
+                raw_status = day.get("CollectionStatus", "")
+                date_changed = "DATE-CHANGED" in raw_status.upper()
+                reason_raw = day.get("CollectionReason", "")
+                change_reason = reason_raw.replace("Reason: ", "").strip() if date_changed else None
+
+                for bin_info in day.get("bins", []):
+                    bin_type = bin_info.get("bin_type", "Unknown").strip()
+                    collections.append(Collection(
+                        date=event_date,
+                        waste_type=bin_type,
+                        icon=_guess_icon(bin_type),
+                        description=bin_info.get("bin_description", ""),
+                        date_changed=date_changed,
+                        change_reason=change_reason,
+                    ))
+
+        collections.sort(key=lambda c: (c.date, c.waste_type))
+        _LOGGER.debug("Fetched %d upcoming collection items for UPRN %s", len(collections), self._uprn)
         return collections
