@@ -23,7 +23,7 @@ from ..const import BINDAYS_BINS_URL, BINDAYS_POSTCODE_URL
 _LOGGER = logging.getLogger(__name__)
 
 _ICON_KEYWORDS: list[tuple[str, str]] = [
-    ("garden",    "mdi:leaf"),
+    ("garden",    "mdi:tree"),
     ("food",      "mdi:food-apple"),
     ("recycl",    "mdi:recycle"),
     ("refuse",    "mdi:trash-can"),

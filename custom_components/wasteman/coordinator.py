@@ -14,7 +14,7 @@ from .scrapers.south_and_vale import SouthAndValeScraper
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(hours=6)
+UPDATE_INTERVAL = timedelta(hours=2)
 
 
 class WastemanCoordinator(DataUpdateCoordinator[list[Collection]]):

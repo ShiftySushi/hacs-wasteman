@@ -159,6 +159,7 @@ class NextBinsSensor(_WastemanSensorBase):
         self._separator = separator
         self._attr_unique_id = f"{entry.entry_id}_next_bins"
         self._attr_name = "Next Bins"
+        self._attr_icon = "mdi:trash-can"
 
     def _visible(self) -> list[Collection]:
         today = date.today()
@@ -179,14 +180,6 @@ class NextBinsSensor(_WastemanSensorBase):
         items = groups[next_date]
         labels = self._separator.join(self._label(c.waste_type) for c in items)
         return f"{labels} - {_format_days_short(items[0].days_until)}"
-
-    @property
-    def icon(self) -> str:
-        visible = self._visible()
-        if not visible:
-            return "mdi:trash-can-outline"
-        first = _group_by_date(visible)[min(_group_by_date(visible))][0]
-        return first.icon or "mdi:trash-can-outline"
 
     @property
     def extra_state_attributes(self) -> dict:
