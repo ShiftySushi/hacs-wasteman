@@ -1,0 +1,12 @@
+{
+  "domain": "wasteman",
+  "name": "Wasteman",
+  "codeowners": ["@shiftysushi"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://git.devparmar.uk/shiftysushi/hacs-wasteman",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "requirements": ["icalendar>=5.0.0"],
+  "version": "1.0.0"
+}
