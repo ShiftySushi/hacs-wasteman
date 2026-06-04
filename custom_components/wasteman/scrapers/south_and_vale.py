@@ -38,6 +38,26 @@ _ICON_KEYWORDS: list[tuple[str, str]] = [
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Home Assistant Wasteman)"}
 
+# Maps lowercase raw API bin_type → clean display name.
+# Add entries here if the council changes their naming in the API response.
+_WASTE_TYPE_NAMES: dict[str, str] = {
+    "recycling":                      "Recycling",
+    "garden waste subscribers":       "Garden Waste",
+    "food waste":                     "Food Waste",
+    "non-recyclable refuse waste":    "Refuse",
+    "textiles/clothes":               "Textiles",
+    "batteries":                      "Batteries",
+    "small electricals":              "Small Electricals",
+    "bulky waste":                    "Bulky Waste",
+    "non-electrical bulky waste":     "Bulky Waste (Non-Electrical)",
+}
+
+
+def _normalize_waste_type(raw: str) -> str:
+    """Return a clean, consistently capitalised waste type name."""
+    stripped = raw.strip()
+    return _WASTE_TYPE_NAMES.get(stripped.lower(), stripped.title())
+
 
 def _guess_icon(bin_type: str) -> str:
     lower = bin_type.lower()
@@ -110,7 +130,7 @@ class SouthAndValeScraper(BaseScraper):
                 change_reason = reason_raw.replace("Reason: ", "").strip() if date_changed else None
 
                 for bin_info in day.get("bins", []):
-                    bin_type = bin_info.get("bin_type", "Unknown").strip()
+                    bin_type = _normalize_waste_type(bin_info.get("bin_type", "Unknown"))
                     collections.append(Collection(
                         date=event_date,
                         waste_type=bin_type,

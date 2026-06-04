@@ -32,4 +32,4 @@ DEFAULT_SEPARATOR = ", "
 
 # Excluded from all sensors and calendar by default.
 # Bulky Waste variants require booking and are not regular kerbside collections.
-DEFAULT_EXCLUDED_TYPES = ["Bulky Waste", "Non-Electrical Bulky Waste"]
+DEFAULT_EXCLUDED_TYPES = ["Bulky Waste", "Bulky Waste (Non-Electrical)"]
