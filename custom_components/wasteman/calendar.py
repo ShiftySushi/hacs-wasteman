@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_EXCLUDED_TYPES, CONF_TYPE_ALIASES, DOMAIN
+from .const import CONF_NEXT_BINS_TYPES, CONF_TYPE_ALIASES, DEFAULT_NEXT_BINS_TYPES, DOMAIN
 from .coordinator import WastemanCoordinator
 from .scrapers import Collection
 
@@ -32,27 +32,28 @@ class WastemanCalendar(CoordinatorEntity[WastemanCoordinator], CalendarEntity):
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_calendar"
 
-    def _excluded(self) -> set[str]:
-        return set(self._entry.options.get(CONF_EXCLUDED_TYPES, []))
+    def _whitelist(self) -> set[str]:
+        return set(self._entry.options.get(CONF_NEXT_BINS_TYPES, DEFAULT_NEXT_BINS_TYPES))
 
     def _label(self, waste_type: str) -> str:
         aliases: dict[str, str] = self._entry.options.get(CONF_TYPE_ALIASES, {})
         return aliases.get(waste_type, waste_type)
 
     def _to_event(self, col: Collection) -> CalendarEvent:
+        label = self._label(col.waste_type)
         return CalendarEvent(
             start=col.date,
             end=col.date + timedelta(days=1),
-            summary=self._label(col.waste_type),
-            description=col.waste_type if col.waste_type != self._label(col.waste_type) else None,
+            summary=label,
+            description=col.waste_type if col.waste_type != label else None,
         )
 
     @property
     def event(self) -> CalendarEvent | None:
         today = date.today()
-        excluded = self._excluded()
+        whitelist = self._whitelist()
         for col in self.coordinator.data or []:
-            if col.waste_type not in excluded and col.date >= today:
+            if col.waste_type in whitelist and col.date >= today:
                 return self._to_event(col)
         return None
 
@@ -62,10 +63,10 @@ class WastemanCalendar(CoordinatorEntity[WastemanCoordinator], CalendarEntity):
         start_date: datetime,
         end_date: datetime,
     ) -> list[CalendarEvent]:
-        excluded = self._excluded()
+        whitelist = self._whitelist()
         events: list[CalendarEvent] = []
         for col in self.coordinator.data or []:
-            if col.waste_type in excluded:
+            if col.waste_type not in whitelist:
                 continue
             col_start = datetime.combine(col.date, datetime.min.time())
             col_end = col_start + timedelta(days=1)
