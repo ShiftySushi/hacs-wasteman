@@ -1,10 +1,11 @@
 {
   "domain": "wasteman",
   "name": "Wasteman",
-  "codeowners": ["@shiftysushi"],
+  "codeowners": ["@ShiftySushi"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://git.devparmar.uk/shiftysushi/hacs-wasteman",
+  "documentation": "https://github.com/ShiftySushi/hacs-wasteman",
+  "issue_tracker": "https://github.com/ShiftySushi/hacs-wasteman/issues",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "requirements": ["icalendar>=5.0.0"],
