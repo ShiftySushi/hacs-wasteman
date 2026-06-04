@@ -12,11 +12,14 @@ from .const import (
     CONF_LOOKAHEAD_DAYS,
     CONF_POSTCODE,
     CONF_SENSOR_PER_TYPE,
+    CONF_SEPARATOR,
     CONF_TYPE_ALIASES,
     CONF_UPRN,
     DEFAULT_DISPLAY_FORMAT,
+    DEFAULT_EXCLUDED_TYPES,
     DEFAULT_LOOKAHEAD_DAYS,
     DEFAULT_SENSOR_PER_TYPE,
+    DEFAULT_SEPARATOR,
     DISPLAY_FORMAT_COMBINED,
     DISPLAY_FORMAT_DATE,
     DISPLAY_FORMAT_DAYS,
@@ -120,11 +123,15 @@ class WastemanOptionsFlow(config_entries.OptionsFlow):
 
         current_aliases: dict[str, str] = opts.get(CONF_TYPE_ALIASES, {})
         aliases_str = "\n".join(f"{k} = {v}" for k, v in current_aliases.items())
-        excluded_str = ", ".join(opts.get(CONF_EXCLUDED_TYPES, []))
+        excluded_str = ", ".join(opts.get(CONF_EXCLUDED_TYPES, DEFAULT_EXCLUDED_TYPES))
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
+                vol.Optional(
+                    CONF_SEPARATOR,
+                    default=opts.get(CONF_SEPARATOR, DEFAULT_SEPARATOR),
+                ): str,
                 vol.Optional(
                     CONF_DISPLAY_FORMAT,
                     default=opts.get(CONF_DISPLAY_FORMAT, DEFAULT_DISPLAY_FORMAT),

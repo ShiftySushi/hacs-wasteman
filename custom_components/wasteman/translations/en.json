@@ -24,13 +24,14 @@
     "step": {
       "init": {
         "title": "Display options",
-        "description": "Customise how waste collection information is shown in Home Assistant.",
+        "description": "Customise how waste collection information is shown in Home Assistant. The **Next Bins** sensor always shows all types collected on the next date grouped together (e.g. 'Recycling, Food waste - 3 days'). Per-type sensors track each waste type individually.",
         "data": {
-          "display_format": "State display format",
-          "sensor_per_type": "Create one sensor per waste type",
+          "separator": "Separator between waste types in Next Bins sensor",
+          "display_format": "Per-type sensor date format",
+          "sensor_per_type": "Also create individual per-type sensors",
           "lookahead_days": "Days ahead to include in upcoming attribute",
-          "excluded_types_raw": "Excluded waste types (comma-separated exact names)",
-          "type_aliases_raw": "Waste type aliases — one per line: Original name = Your label"
+          "excluded_types_raw": "Excluded waste types — hidden everywhere (comma-separated exact names)",
+          "type_aliases_raw": "Waste type display names — one per line: Original name = Your label"
         }
       }
     }
