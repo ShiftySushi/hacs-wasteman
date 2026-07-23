@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import CONF_NEXT_BINS_TYPES, CONF_TYPE_ALIASES, DEFAULT_NEXT_BINS_TYPES, DOMAIN
 from .coordinator import WastemanCoordinator
@@ -50,7 +51,7 @@ class WastemanCalendar(CoordinatorEntity[WastemanCoordinator], CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
-        today = date.today()
+        today = dt_util.now().date()
         whitelist = self._whitelist()
         for col in self.coordinator.data or []:
             if col.waste_type in whitelist and col.date >= today:
@@ -68,8 +69,8 @@ class WastemanCalendar(CoordinatorEntity[WastemanCoordinator], CalendarEntity):
         for col in self.coordinator.data or []:
             if col.waste_type not in whitelist:
                 continue
-            col_start = datetime.combine(col.date, datetime.min.time())
-            col_end = col_start + timedelta(days=1)
+            col_start = dt_util.start_of_local_day(col.date)
+            col_end = dt_util.start_of_local_day(col.date + timedelta(days=1))
             if col_end <= start_date or col_start >= end_date:
                 continue
             events.append(self._to_event(col))

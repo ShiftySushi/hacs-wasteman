@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_DISPLAY_FORMAT,
@@ -55,8 +56,8 @@ def _format_days_short(days: int) -> str:
     return f"{days} days"
 
 
-def _state_string(collection: Collection, fmt: str) -> str:
-    days = collection.days_until
+def _state_string(collection: Collection, fmt: str, today: date) -> str:
+    days = collection.days_until(today)
     if fmt == DISPLAY_FORMAT_DAYS:
         return _format_days(days)
     if fmt == DISPLAY_FORMAT_DATE:
@@ -128,12 +129,12 @@ class _WastemanSensorBase(CoordinatorEntity[WastemanCoordinator], SensorEntity):
     def _collections_for(self, *types: str) -> list[Collection]:
         """Upcoming collections for the given waste types within the lookahead window."""
         type_set = set(types)
-        today = date.today()
+        today = dt_util.now().date()
         return [
             c for c in (self.coordinator.data or [])
             if c.waste_type in type_set
             and c.date >= today
-            and c.days_until <= self._lookahead
+            and c.days_until(today) <= self._lookahead
         ]
 
 
@@ -162,16 +163,17 @@ class NextBinsSensor(_WastemanSensorBase):
         self._attr_icon = "mdi:trash-can"
 
     def _visible(self) -> list[Collection]:
-        today = date.today()
+        today = dt_util.now().date()
         return [
             c for c in (self.coordinator.data or [])
             if c.waste_type in self._whitelist
             and c.date >= today
-            and c.days_until <= self._lookahead
+            and c.days_until(today) <= self._lookahead
         ]
 
     @property
     def native_value(self) -> str | None:
+        today = dt_util.now().date()
         visible = self._visible()
         if not visible:
             return None
@@ -179,16 +181,17 @@ class NextBinsSensor(_WastemanSensorBase):
         next_date = min(groups)
         items = groups[next_date]
         labels = self._separator.join(self._label(c.waste_type) for c in items)
-        return f"{labels} - {_format_days_short(items[0].days_until)}"
+        return f"{labels} - {_format_days_short(items[0].days_until(today))}"
 
     @property
     def extra_state_attributes(self) -> dict:
+        today = dt_util.now().date()
         groups = _group_by_date(self._visible())
         return {
             "upcoming": [
                 {
                     "date": d.isoformat(),
-                    "days_until": items[0].days_until,
+                    "days_until": items[0].days_until(today),
                     "waste_types": [self._label(c.waste_type) for c in items],
                     "date_changed": any(c.date_changed for c in items),
                 }
@@ -222,19 +225,21 @@ class WasteTypeSensor(_WastemanSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        nxt = self._next()
-        return _state_string(nxt, self._display_fmt) if nxt else None
+        today = dt_util.now().date()
+        nxt = self._next(today)
+        return _state_string(nxt, self._display_fmt, today) if nxt else None
 
     @property
     def icon(self) -> str:
-        nxt = self._next()
+        nxt = self._next(dt_util.now().date())
         return (nxt.icon or "mdi:trash-can-outline") if nxt else "mdi:trash-can-outline"
 
     @property
     def extra_state_attributes(self) -> dict:
-        nxt = self._next()
+        today = dt_util.now().date()
+        nxt = self._next(today)
         upcoming = [
-            {"date": c.date.isoformat(), "days_until": c.days_until}
+            {"date": c.date.isoformat(), "days_until": c.days_until(today)}
             for c in self._collections_for(self._waste_type)
         ]
         attrs: dict = {"upcoming": upcoming}
@@ -245,8 +250,7 @@ class WasteTypeSensor(_WastemanSensorBase):
                 attrs["change_reason"] = nxt.change_reason
         return attrs
 
-    def _next(self) -> Collection | None:
-        today = date.today()
+    def _next(self, today: date) -> Collection | None:
         return next(
             (c for c in (self.coordinator.data or [])
              if c.waste_type == self._waste_type and c.date >= today),

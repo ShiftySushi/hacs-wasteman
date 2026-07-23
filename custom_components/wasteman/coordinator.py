@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import CONF_UPRN, DOMAIN
@@ -27,7 +28,10 @@ class WastemanCoordinator(DataUpdateCoordinator[list[Collection]]):
             name=DOMAIN,
             update_interval=UPDATE_INTERVAL,
         )
-        self._scraper = SouthAndValeScraper(uprn=config[CONF_UPRN])
+        self._scraper = SouthAndValeScraper(
+            async_get_clientsession(hass),
+            uprn=config[CONF_UPRN],
+        )
 
     async def _async_update_data(self) -> list[Collection]:
         try:

@@ -15,9 +15,9 @@ class Collection:
     date_changed: bool = field(default=False)
     change_reason: str | None = field(default=None)
 
-    @property
-    def days_until(self) -> int:
-        return (self.date - date.today()).days
+    def days_until(self, today: date) -> int:
+        """Return days until this collection from the supplied local date."""
+        return (self.date - today).days
 
 
 class BaseScraper(ABC):

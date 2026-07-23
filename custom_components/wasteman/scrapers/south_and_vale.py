@@ -15,7 +15,8 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime
 
-import aiohttp
+from aiohttp import ClientSession, ClientTimeout
+from homeassistant.util import dt as dt_util
 
 from . import BaseScraper, Collection
 from ..const import BINDAYS_BINS_URL, BINDAYS_POSTCODE_URL
@@ -74,17 +75,16 @@ def _parse_date(date_str: str) -> date | None:
         return None
 
 
-async def lookup_addresses(postcode: str) -> list[dict]:
+async def lookup_addresses(session: ClientSession, postcode: str) -> list[dict]:
     """Return [{uprn, address, council}, ...] for a postcode.
 
     Raises ValueError if the postcode returns no results or the API errors.
     """
     clean = postcode.replace(" ", "").upper()
     url = BINDAYS_POSTCODE_URL.format(postcode=clean)
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            resp.raise_for_status()
-            data = await resp.json(content_type=None)
+    async with session.get(url, headers=_HEADERS, timeout=ClientTimeout(total=15)) as resp:
+        resp.raise_for_status()
+        data = await resp.json(content_type=None)
 
     if data.get("setStatus") != "OK":
         raise ValueError(f"Postcode lookup failed: {data.get('setMessage', 'unknown error')}")
@@ -98,24 +98,24 @@ class SouthAndValeScraper(BaseScraper):
     NAME = "South Oxfordshire / Vale of White Horse"
     DESCRIPTION = "BinDays REST API — forms.southandvale.gov.uk"
 
-    def __init__(self, uprn: str) -> None:
+    def __init__(self, session: ClientSession, uprn: str) -> None:
+        self._session = session
         self._uprn = uprn
         self._url = BINDAYS_BINS_URL.format(uprn=uprn)
 
     async def fetch(self) -> list[Collection]:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                self._url,
-                headers=_HEADERS,
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                resp.raise_for_status()
-                data = await resp.json(content_type=None)
+        async with self._session.get(
+            self._url,
+            headers=_HEADERS,
+            timeout=ClientTimeout(total=30),
+        ) as resp:
+            resp.raise_for_status()
+            data = await resp.json(content_type=None)
 
         if data.get("setStatus") != "OK":
             raise ValueError(f"BinDays API error: {data.get('setMessage', 'unknown')}")
 
-        today = date.today()
+        today = dt_util.now().date()
         collections: list[Collection] = []
 
         for week in data.get("setData", {}).get("week", []):

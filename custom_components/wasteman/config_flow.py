@@ -10,6 +10,7 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_DISPLAY_FORMAT,
@@ -54,7 +55,9 @@ class WastemanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             postcode = user_input[CONF_POSTCODE].strip()
             try:
-                self._addresses = await lookup_addresses(postcode)
+                self._addresses = await lookup_addresses(
+                    async_get_clientsession(self.hass), postcode
+                )
                 self._postcode = postcode
                 return await self.async_step_address()
             except Exception:  # noqa: BLE001
